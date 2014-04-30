@@ -6,7 +6,12 @@
 ////////////////////////////////////////////////////////////////////
 
 
-
+	if ($EMA){
+		print "------------------- EMA ENGINE TRADE BLOCK -------------------\n";
+		$tmp1 = round($ema1,2);$tmp2 = round($ema2,2);$tmp3 = round($ema3,2);
+		if (@$DEBUG && $EMA ) print "EMAs:      EMA{$ema1Time}:\${$tmp1} EMA{$ema2Time}:\${$tmp2} EMA{$ema3Time}:\${$tmp3} \n"; //&& $EMA 
+		$tmp1 = $tmp2 = $tmp3 = NULL;	
+	}
 
 
 

@@ -32,8 +32,7 @@ include "config.php";
 include "engine_hybrid.php";
 include "engine_ema.php";
 include "engine_static.php";
-include "engine_filled.php";
-include "engine_5050.php";
+include "engine_balance.php";
 include "engine_josh.php";
 include "engine_microroll.php";
 ////////////////////////////////////////////////////////////////////
@@ -45,13 +44,12 @@ $ENGINE = "M";
 //H - Hybrid Engine
 //E - EMA engine
 //S - Static Engine
-//B - Filled Engine
 //FF - 50/50 Balance Engine
 //JOSH - JOSH's Trading Engine
 //M - Micro-roll engine
-//F
 
-$HYBRID = $STATIC = $EMA = $BALANCE = $JOSH = $FF = $F = FALSE;
+
+$HYBRID = $STATIC = $EMA = $BALANCE = $JOSH = $FF = FALSE;
 switch ($ENGINE) {
 	case "H":
 		$HYBRID = TRUE;
@@ -734,10 +732,12 @@ while ( 'the answer to life the universe and everything' != '41'){
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////		
 
+////////////////////////////////////////////////////////////////////
+//Microroll Engine
+////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////Micro-Roll ENGINE/////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 //DEBUG $stop target ticker over under count
 //SOLVED Need to record amounts and rates to prevent cancellation 
 //DEBUG Need to set a stop loss to cancel all orders, sell all B and restart (use main trade engine)
@@ -1019,164 +1019,11 @@ while ( 'the answer to life the universe and everything' != '41'){
 			
 		}
 	}
+
+
 	
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////Balance ENGINE/////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//DEBUG you may want to use threshold crossing for these to prevent mass ordering.
-	if ( $BALANCE ){
-	////////////////////////////////////////////////////////////////////
-	//Calculate distance, difference, portfolio balance
-		$distanceFromHigh = $ticker['ticker']['high'] - $ticker['ticker']['last'];
-		$distanceFromLow = $ticker['ticker']['last'] - $ticker['ticker']['low'];
-		$spreadHighLow = $ticker['ticker']['high'] - $ticker['ticker']['low'];
-	
-		//Calculate new preffered balance amounts
-		$reBalanceBTC = floor(($distanceFromLow/$spreadHighLow)*100)/100;
-		$reBalanceUSD = 1-$reBalanceBTC; //Prefer USD during rebalance
-		
-		$currentBalanceBTC = floor(($BTCB/$BTCT)*100)/100;
-		$currentBalanceUSD = 1-$currentBalanceBTC; //$USDB/$USDT;
-		
-		$reBalanceUSDDisplay = $reBalanceUSD*100;
-		$reBalanceBTCDisplay = $reBalanceBTC*100;
-		$currentBalanceUSDDisplay = $currentBalanceUSD*100;
-		$currentBalanceBTCDisplay = $currentBalanceBTC*100;
-	
-		print "------------ Portfolio Balancing Information  ------------\n";
-		$tmp1 = round($distanceFromHigh,2);$tmp2 = round($distanceFromLow,2);$tmp3 = round($spreadHighLow,2);
-		print "From High:{$tmp1} From Low:{$tmp2} Spread:{$tmp3}\n";
-		$tmp1 = $tmp2 = $tmp3 = NULL;
-		
-		print "Current Balance: USD:{$currentBalanceUSDDisplay}% BTC:{$currentBalanceBTCDisplay}%\n";
-		print "Target  Balance: USD:{$reBalanceUSDDisplay}% BTC:{$reBalanceBTCDisplay}%\n";
-	
-		////////////////////////////////////////////////////////////////////
-		//Setup Buy orders
-		$USDremaining = $USD;
-		$balanceBuy = FALSE;
-		print "------------------- Mini-Balance-Trade Block -------------------\n";
-		print "Checking Micro-Balance Buy Funds and Balance: ";
-		if ( $BALANCE && ($USDT*($currentBalanceUSD-$reBalanceUSD))/($ticker['ticker']['last'] - $threshold)  > 0 && $balanceSell = FALSE ){ //Trade USD for BTC
-			print "Increasing BTC - Decreasing USD. \n";
-			$executeTrade = TRUE; //turn on trading
-			$balanceBuy = TRUE; //Let the next part know we bought
-			$type[$countOrder] = $exchangeBuySell[0]; //The type of trade
-			$rate[$countOrder] = floor100($ticker['ticker']['last'] - $threshold);
-			$amount[$countOrder] = round( ($USDT*($currentBalanceUSD-$reBalanceUSD))/$rate[$countOrder] ,2); //the amount of the trade
-			$amount[$countOrder] = min($amount[$countOrder],$balanceAmount);
-			$USDremaining = $USDremaining - $rate[$countOrder] * $amount[$countOrder] ;
-			print "Buying {$amount[$countOrder]}B at a rate of \${$rate[$countOrder]} \${$USDremaining} left.\n";
-			$balanceThresholdBuy = $rate[$countOrder];
-			$countOrder++;
-		} else print "No Buy Trades.\n";
-		////////////////////////////////////////////////////////////////////
-		//Setup Sell Orders
-		$BTCremaining = $BTC;
-		$balanceSell = FALSE;
-		print "Checking Micro-Balance Sell Funds and Balance: ";
-		if ( $BALANCE && $BTCT*($currentBalanceBTC-$reBalanceBTC) > 0  && $balanceBuy = FALSE ){ //Trade BTC for USD
-			print "Increasing USD - Decreasing BTC. \n";
-			$executeTrade = TRUE; //turn on trading
-			$balanceSell = TRUE;
-			$type[$countOrder] = $exchangeBuySell[1]; //The type of trade
-			$rate[$countOrder] = ceil((($ticker['ticker']['last'] + $threshold))*100)/100;
-			$amount[$countOrder] = round( ($BTCT*($currentBalanceBTC-$reBalanceBTC)) ,2); //the amount of the trade
-			$amount[$countOrder] = min($amount[$countOrder],$balanceAmount);
-			$BTCremaining = $BTCremaining - $amount[$countOrder] ;
-			print "Selling {$amount[$countOrder]}B at a rate of \${$rate[$countOrder]} \${$USDremaining} left.\n";
-			$thresholdSell = $rate[$countOrder];
-			$countOrder++;
-		} else print "No Sell Trades.\n";
-	}
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////JOSH's ENGINE/////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	if ($JOSH){
-		//$joshAmount = 5; //In BTC
-		//$joshThreshold = 5; //In USD
-		//$joshStopLoss = .05; //as a percentage
-		//$joshReBuy = .05; //as a percentage
-		if ( !@$joshTicker ) $joshTicker =  $ticker['ticker']['last'];
-	////////////////////////////////////////////////////////////////////
-	//Reset Funds and print Header Block
-		$USDremaining = $USD;
-		$BTCremaining = $BTC;
-		print "------------------- JOSH's ENGINE TRADE BLOCK -------------------\n";
-		print "Threshold: Fees:{$exchangeCommision}% Trades:{$joshThreshold}";
-		$tmp1 = $joshTicker + $joshThreshold; $tmp2 = $joshTicker - $joshThreshold;
-		if (@$DEBUG ) print "Josh-Targets: Over:\${$tmp1} Tick:\${$joshTicker} Under:\${$tmp2}\n";
-		print "Checking JOSH Buy Funds and Balance: ";
-	//DEBUG need to get last two order ID's to check if they filled?
-	////////////////////////////////////////////////////////////////////
-	//Reset the ticker
-		if ( $ticker['ticker']['last'] > $joshTicker + $joshThreshold || $ticker['ticker']['last'] < $joshTicker - $joshThreshold ){
-			$joshTicker =  $ticker['ticker']['last'];
-		}
-	////////////////////////////////////////////////////////////////////
-	//Cancel all orders
-		cancelOrders($exchangeBuySell[0]); //cancel current buy orders to replace;
-		cancelOrders($exchangeBuySell[1]); //cancel current sell orders to replace;
-	
-	////////////////////////////////////////////////////////////////////
-	//Setup Buy orders
-		if ( 'josh' == 'cool' && $USD > $joshAmount*($ticker['ticker']['last']-$joshThreshold) ){ //BUY
-			print "\n";
-			$executeTrade = TRUE; //turn on trading
-			
-			$type[$countOrder] = $exchangeBuySell[0]; //The type of trade
-			$rate[$countOrder] = floor100($ticker['ticker']['last'] - $joshThreshold);
-			$amount[$countOrder] = $joshAmount; //the amount of the trade
-			$USDremaining = $USDremaining - $rate[$countOrder] * $amount[$countOrder] ;
-			print "Buying {$amount[$countOrder]}B at a rate of \${$rate[$countOrder]} \${$USDremaining} left.\n";
-			$countOrder++;
-		} else print "No Buy Trades.\n";
-	////////////////////////////////////////////////////////////////////
-	//Setup Sell Orders
-		if ( 'josh' == 'cool' && $BTC > $joshAmount ){ //SELL
-			print "\n";
-			$executeTrade = TRUE; //turn on trading
-			
-			$type[$countOrder] = $exchangeSellSell[1]; //The type of trade
-			$rate[$countOrder] = ceil100($ticker['ticker']['last'] + $joshThreshold);
-			$amount[$countOrder] = $joshAmount; //the amount of the trade
-			$BTCremaining = $BTCremaining - $amount[$countOrder];
-			print "Selling {$amount[$countOrder]}B at a rate of \${$rate[$countOrder]} \${$BTCremaining} left.\n";
-			$countOrder++;
-		} else print "No Sell Trades.\n";
-	}
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////STATIC ENGINE/////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//set reference ticker
-
-//buy at ticker -$5
-//sell at ticker +$5
-
-//repeat until all funds are used
-
-//wait for a $5 movement
-
-//Do it again
 
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////Fibonacci ENGINE/////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////EMA ENGINE/////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	if ($EMA){
-		print "------------------- EMA ENGINE TRADE BLOCK -------------------\n";
-		$tmp1 = round($ema1,2);$tmp2 = round($ema2,2);$tmp3 = round($ema3,2);
-		if (@$DEBUG && $EMA ) print "EMAs:      EMA{$ema1Time}:\${$tmp1} EMA{$ema2Time}:\${$tmp2} EMA{$ema3Time}:\${$tmp3} \n"; //&& $EMA 
-		$tmp1 = $tmp2 = $tmp3 = NULL;	
-	}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////BALANCE ENGINE/////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////Hybrid EMA/FIB/BALANCE ENGINE/////////////////////////////////////////////////////////////////
