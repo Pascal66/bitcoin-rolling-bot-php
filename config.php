@@ -26,3 +26,4 @@ $btceSecret = 'FILL ME'; // your Secret-key
 $emailSubject = "BTCbot Trade on {$exchange}";
  
 
+?>
