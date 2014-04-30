@@ -7,7 +7,7 @@
 //C - Custom trailing/advancing sell/sell bot for gna
 //D - Buy Down, Buy 1/2 spread each .5 drop and sell 1 each $1 gain
 //E - Rolling sell/sell on dips and spikes V1,1.1,1.2,V2,2.1
-//F - 24 Hour high/low balancing bot, maintain (high-last)/(high-low) balance in USD and (last-low)/(high-low) in BTC
+//F - 24 Hour high/low balancing bot, maintain (high-last)/(high-low) balance in USD and (last-low)/(high-low) in LTC
 //G - EMA triggered rolling with Fibonacci shares and high/low balancing combination with micro-trade re-balancing.
 //H - Custom Rolling bot based on dynamic thresholds
 //I - Micro-Trade rolling bot with variable buy and sell orders and iterations
@@ -27,15 +27,21 @@
 //Don't buy unless last < EMA1 < EMA2 < EMA3
 //Use micro-orders to play on spikes and dips
 
+////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
+//USER CONFIGURABLE
+////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
+//FEATURES
+date_default_timezone_set('Europe/Berlin'); //Possible Timezones: http://www.php.net/manual/de/timezones.php
+$DEBUG = TRUE; //Should the program Print Debug information
+$simulate = FALSE; //RUNS IN SIMULATION MODE, NO TRADES ARE MADE just PRINT OUTPUT
+$exchange = "E"; //Pick an exchange to run on
+$BTCE = TRUE;
 
-include "config.php";
-include "engine_hybrid.php";
-include "engine_ema.php";
-include "engine_static.php";
-include "engine_filled.php";
-include "engine_5050.php";
-include "engine_josh.php";
-include "engine_microroll.php";
+
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
 //ENGINE Selection
@@ -101,7 +107,7 @@ switch ($ENGINE) {
 		$microSellDivisor = 10; //number of Sell orders to place
 		$microBuyDivisor = 10; //Number of Buy orders to place
 		$microIteration = .5;//USD$ iteration for multiple orders
-		$microAmount = .01; //Amount of BTC per mini buy/sell round
+		$microAmount = .01; //Amount of LTC per mini buy/sell round
 		$microProfit = .005; //The profit threshold, this is the minimum profit per trade to make,
 		$microStopLoss = 1; //The stop loss percent, Sell out at a loss
 		$microReBuy = .10; //The price change to rebuy after a loss
@@ -133,7 +139,7 @@ switch ($ENGINE) {
 		break;
 	case "JOSH":
 		$JOSH = TRUE;
-		$joshAmount = 5; //In BTC
+		$joshAmount = 5; //In LTC
 		$joshThreshold = 5; //In USD
 		$joshStopLoss = .05; //as a percentage
 		$joshReBuy = .05; //as a percentage
@@ -143,7 +149,10 @@ switch ($ENGINE) {
 //Stop Loss
 $stop = array('target','ticker','over','under','count' => 0);
 
+//Maximum play amounts (that's play not investment) this is after all technically a beta idea
 
+$maxUSD = 500; //The maximum amount of USD to use -> includes B held * last price!
+$maxLTC = 1; //The maximum amount of LTC to use
 
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
@@ -163,7 +172,13 @@ $thresholdOrders = 0; //If using order based triggers vs static or EMA
 $maxPendingOrders = 0; //Keep this many orders active when canceling
 $maxOrders = 100;//$maxOrders = max orders to pull should be set?  100?
 
+//Send email reports when orders are placed
+$emailRCPTo = "SET IN KEY.PHP INCLUDE FILE";
+$BTCEKey = '1VF4M4Z2-SDH6L6F0-HKJV8Q8S-N781RDJX-8N5CHJSK'; // your API-key
+$BTCESecret = 'e3f1a21ed680f6edc7c931960fe51bc3a5f4730d8ee65dc7f14b83275a79c7d6'; // your Secret-key
 
+$emailSubject = "LTCbot Trade on {$exchange}";
+ 
 //Time between runs 
 $nanosleep = 500000000; //nanoseconds
 $sleepCancel = 500000; //nanoseconds to sleep between order cancellations
@@ -175,17 +190,17 @@ $sleepCancel = 500000; //nanoseconds to sleep between order cancellations
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
 
-$minBidBTC = .01; //Minimum Bids the exchange will accept (BTC-E Mins)
-$engineAmount = ( min($microAmount/$microSellDivisor,$microAmount/$microBuyDivisor) > $minBidBTC ? $microAmount : $minBidBTC );
+$minBidLTC = .01; //Minimum Bids the exchange will accept (LTC-E Mins)
+$engineAmount = ( min($microAmount/$microSellDivisor,$microAmount/$microBuyDivisor) > $minBidLTC ? $microAmount : $minBidLTC );
 //DEBUG need to add multiplier array lowest to  this
 
 
 if ($exchange == "E") $exchangeCommision = .002; //The exchange commision percent (as 1 - commision as decimal) 
 
 
-//BTC-E Currency pairs & bid ask JSON names
-$btcesymbol = array("btc_usd", "ltc_btc", "ltc_usd");
-$btcebidorask = array("bids", "asks");
+//LTC-E Currency pairs & bid ask JSON names
+$BTCEsymbol = array("LTC_usd", "ltc_LTC", "ltc_usd");
+$BTCEbidorask = array("bids", "asks");
 if (@$BTCE) $exchangeBuySell = array("buy","sell");
 
 $executeTrade = $postTrade = FALSE;
@@ -314,7 +329,7 @@ while ( 'the answer to life the universe and everything' != '41'){
 	$ticker = array();
         $sleep=rand(1, 10); //set a random sleep timer
 	while ( empty($ticker) ){
-		if (@$BTCE) $ticker = json_decode(send( 'https://btc-e.com/api/2/btc_usd/ticker' ), TRUE );
+		if (@$BTCE) $ticker = json_decode(send( 'https://LTC-e.com/api/2/LTC_usd/ticker' ), TRUE );
 		if( !@$ticker ){
 			print_r($return);
 			$ticker = $return = $orderList = $TradeHistory = array();
@@ -375,7 +390,7 @@ while ( 'the answer to life the universe and everything' != '41'){
 			//		) //END EMA
 			//		|| ( $BALANCE 
 			//		&& $currentBalanceUSD-$reBalanceUSD > 0
-			//		&& $currentBalanceBTC-$reBalanceBTC > 0)
+			//		&& $currentBalanceLTC-$reBalanceLTC > 0)
 			//		)//END BALANCE
 			//		
 			//		&& $tickerOld['ticker']['last'] !== $ticker['ticker']['last'] //The ticker isn't a dup, (Should never be tested here)
@@ -403,10 +418,10 @@ while ( 'the answer to life the universe and everything' != '41'){
 		$ticker = $return = $orderList = $TradeHistory = array(); //blank the tickers
 	while( empty($ticker) || empty($return) || empty($orderList) || empty($TradeHistory) ){
 		if ($BTCE){
-			$ticker = json_decode(send( 'https://btc-e.com/api/2/btc_usd/ticker' ), TRUE ); // BTCE Ticker
-			$orderList = json_decode(btce_query("OrderList", array("active" => 1, "pair" => "btc_usd")), TRUE);
-			$TradeHistory = json_decode(btce_query("TradeHistory", array("count" => $maxOrders, "pair" => "btc_usd")), TRUE);
-			$return = json_decode(btce_query('getInfo'), TRUE); //BTCE account info
+			$ticker = json_decode(send( 'https://LTC-e.com/api/2/LTC_usd/ticker' ), TRUE ); // BTCE Ticker
+			$orderList = json_decode(BTCE_query("OrderList", array("active" => 1, "pair" => "LTC_usd")), TRUE);
+			$TradeHistory = json_decode(BTCE_query("TradeHistory", array("count" => $maxOrders, "pair" => "LTC_usd")), TRUE);
+			$return = json_decode(BTCE_query('getInfo'), TRUE); //BTCE account info
 		}
 		//Verify the ticker changed
 		if( !@$ticker || !@$return || !@$orderList || !@$TradeHistory || @$return['success'] !== 1 ){
@@ -445,19 +460,19 @@ while ( 'the answer to life the universe and everything' != '41'){
 ////////////////////////////////////////////////////////////////////
 //DEBUG need to calculate cost in $sellDivisor iterations for amounts that will be traded.
 //DEBUG REFERENCE FILLED ORDERS! Prevent calculating cost based on filled sell orders!  
-	$BTCO = $USDO = 0;
+	$LTCO = $USDO = 0;
 	
 	$sellOrders = $buyOrders = array(); //blank the order books for each new run (Infinite Loop issue)
 	$b = $s = 0; //FIXED order clearing if no open orders
 	if ( $orderList['success'] > 0 ){
 		foreach ( $orderList['return'] as $key => $value){
 			if ( $value['type'] == $exchangeBuySell[1] ){
-				$BTCO = $BTCO + $value['amount']; //BTC = sum of sell orders and amounts //PHP Fatal error:  Unsupported operand types in /arbot/buydownbotBTCG.php on line 281
+				$LTCO = $LTCO + $value['amount']; //LTC = sum of sell orders and amounts //PHP Fatal error:  Unsupported operand types in /arbot/buydownbotLTCG.php on line 281
 				$sellOrders[$s] = $value['rate'];
 				$s++;
 			}
 			//if ( $value['type'] == $exchangeBuySell[1] && $value['amount'] == $engineAmount ){
-			//	$reserveBTC = ( $reserveBTC - $value['amount'] >= 0 ? $reserveBTC - $value['amount'] : 0); //
+			//	$reserveLTC = ( $reserveLTC - $value['amount'] >= 0 ? $reserveLTC - $value['amount'] : 0); //
 			//	
 			//}
 			if ( $value['type'] == $exchangeBuySell[0] ) {
@@ -487,21 +502,21 @@ while ( 'the answer to life the universe and everything' != '41'){
 // Calculate FUNDS
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
-	$USDB = $BTCB = $USDT = $BTCT = $BTC = $USD = 0;
-	//Calculate the TOTAL we have in orders and balance and USD/last BTCTotal
-	if ($BTCE) $BTCT = $return['return']['funds']['btc'] + $BTCO + $return['return']['funds']['usd']/$ticker['ticker']['last'] + $USDO/$ticker['ticker']['last'];
-	//Calculate the TOTAL USD we have in buy orders, sell orders, BTC balance, USD Balance
-	if ($BTCE) $USDT = ($return['return']['funds']['btc'] + $BTCO)*$ticker['ticker']['last'] + $USDO + $return['return']['funds']['usd'];
-	//Calculate the BALANCE we have in orders and funds BTCBalance USDBalance
-	if ($BTCE) $BTCB = $return['return']['funds']['btc'] + $BTCO;
+	$USDB = $LTCB = $USDT = $LTCT = $LTC = $USD = 0;
+	//Calculate the TOTAL we have in orders and balance and USD/last LTCTotal
+	if ($BTCE) $LTCT = $return['return']['funds']['LTC'] + $LTCO + $return['return']['funds']['usd']/$ticker['ticker']['last'] + $USDO/$ticker['ticker']['last'];
+	//Calculate the TOTAL USD we have in buy orders, sell orders, LTC balance, USD Balance
+	if ($BTCE) $USDT = ($return['return']['funds']['LTC'] + $LTCO)*$ticker['ticker']['last'] + $USDO + $return['return']['funds']['usd'];
+	//Calculate the BALANCE we have in orders and funds LTCBalance USDBalance
+	if ($BTCE) $LTCB = $return['return']['funds']['LTC'] + $LTCO;
 	if ($BTCE) $USDB = $return['return']['funds']['usd'] + $USDO;
-	//Calculate the TRADE amount we have in funds and orders BTCTrade USDTrade
-	$BTC = ( $BTCB >= $maxBTC ? $maxBTC - $BTCO  : $BTCB - $BTCO );
+	//Calculate the TRADE amount we have in funds and orders LTCTrade USDTrade
+	$LTC = ( $LTCB >= $maxLTC ? $maxLTC - $LTCO  : $LTCB - $LTCO );
 	$USD = ( $USDB >= $maxUSD ?  $maxUSD - $USDO   : $USDB - $USDO );
 
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
-// Calculate BTC Cost of BTCBalance
+// Calculate LTC Cost of LTCBalance
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
 		$dollarCostTotal = $dollarCostShares = $idealSellRate = $idealSellAmount = $dollarCostAverage = $countBuys = 0;
@@ -510,14 +525,14 @@ while ( 'the answer to life the universe and everything' != '41'){
 		$costFilled = array( "total" => 0, "shares" => 0, "average" => 0, "ideal" => 0);
 		$profitFilled = array( "total" => 0, "shares" => 0, "average" => 0, "ideal" => 0);
 
-		$BTCremaining = $BTCB;
-		if ($BALANCE) $BTCremaining = $BTC*($currentBalanceBTC-$reBalanceBTC);
+		$LTCremaining = $LTCB;
+		if ($BALANCE) $LTCremaining = $LTC*($currentBalanceLTC-$reBalanceLTC);
 		foreach ( $TradeHistory['return'] as $key => $value){
 		//DEBUG use this information to calculate trades/costs/profits
-			if ( $value['type'] == $exchangeBuySell[0] && $BTCremaining >= $minBidBTC  ) { 
+			if ( $value['type'] == $exchangeBuySell[0] && $LTCremaining >= $minBidLTC  ) { 
 				$costBalance['total'] = $costBalance['total'] + $value['rate']*$value['amount'];
 				$costBalance['shares'] = $costBalance['shares'] + $value['amount'];//$amountTrade[0]; Total shares analysed not / spread
-				$BTCremaining = $BTCremaining - $value['amount'];
+				$LTCremaining = $LTCremaining - $value['amount'];
 				$countBuys++;
 			}
 			/*
@@ -525,7 +540,7 @@ while ( 'the answer to life the universe and everything' != '41'){
 	"success":1,
 	"return":{
 		"166830":{
-			"pair":"btc_usd",
+			"pair":"LTC_usd",
 			"type":"sell",
 			"amount":1,
 			"rate":1,
@@ -535,7 +550,7 @@ while ( 'the answer to life the universe and everything' != '41'){
 		}
 	}
 }*/
-			if ( @$ordersPlaced && array_key_exists ( $value['order_id'] , $ordersPlaced )){ //PHP Notice:  Undefined index: order_id in /arbot/buydownbotBTCG.php on line 532
+			if ( @$ordersPlaced && array_key_exists ( $value['order_id'] , $ordersPlaced )){ //PHP Notice:  Undefined index: order_id in /arbot/buydownbotLTCG.php on line 532
 				$filledOrders[$value['order_id']] = array(); //Define the array 
 				$filledOrders[$value['order_id']] = $ordersPlaced[$value['order_id']]; //Store the order info in the array
 				$ordersFilledIteration[$countIteration-1] = array(); //Define the last iteration array
@@ -602,14 +617,14 @@ while ( 'the answer to life the universe and everything' != '41'){
 	if ($STOPLOSS) print "Rebuy Targets: Over:{$stop['over']} Tick:{$stop['ticker']} Under:{$stop['under']}\n";
 	print "----------------------------------------------------------\n"; //Print Separator
 	print "------------------- Funds  Information -------------------\n";
-	$tmp1 = round($BTCT,2);$tmp2 = round($USDT,2);
-	print " Cash Out: BTC:{$tmp1} USD:\${$tmp2}\n";
-	$tmp1 = round($BTCB,2);$tmp2 = round($USDB,2);
-	print "  Balance: BTC:{$tmp1} USD:\${$tmp2}\n";
-	print " Maximums: BTC:{$maxBTC} USD:\${$maxUSD}\n";
+	$tmp1 = round($LTCT,2);$tmp2 = round($USDT,2);
+	print " Cash Out: LTC:{$tmp1} USD:\${$tmp2}\n";
+	$tmp1 = round($LTCB,2);$tmp2 = round($USDB,2);
+	print "  Balance: LTC:{$tmp1} USD:\${$tmp2}\n";
+	print " Maximums: LTC:{$maxLTC} USD:\${$maxUSD}\n";
 	
 	 
-	$engineAmount = max($BTCB,$USDB/$ticker['ticker']['last']);
+	$engineAmount = max($LTCB,$USDB/$ticker['ticker']['last']);
 	$engineAmount = min ($engineAmount,$microAmount);
 	$engineAmount = round($engineAmount,8);
 	$tmp1 = round($engineAmount,2);
@@ -618,8 +633,8 @@ while ( 'the answer to life the universe and everything' != '41'){
 	
 	print " EngineAmount:{$tmp1} Sells:{$engineSellDivisor} Buys:{$engineBuyDivisor} Profit:{$engineProfit}\n ";
 
-	$tmp1 = round($BTC,2);$tmp2 = round($USD,2);
-	print " Tradable: BTC:{$tmp1} USD:\${$tmp2}\n";
+	$tmp1 = round($LTC,2);$tmp2 = round($USD,2);
+	print " Tradable: LTC:{$tmp1} USD:\${$tmp2}\n";
 	print "----------------------------------------------------------\n"; //Print Separator
 	print "------------------- Order Information  -------------------\n";		    			   
 
@@ -647,81 +662,81 @@ while ( 'the answer to life the universe and everything' != '41'){
 		$tmp1 = $tmp2 = $tmp3 = $tmp4 = NULL;
 	}
 	if ( (@$costFilled['shares'] == 0) && (@$costBalance['shares'] == 0)){
-		print "Order Costs: Not holding any BTC! \n";
+		print "Order Costs: Not holding any LTC! \n";
 	}
 	
 	print "----------------------------------------------------------\n"; //Print Separator
 	
 	print "------------------- Profit Information  -------------------\n";
 	if ( $countIteration < 3 ){
-		$profit = array('initial' => array('balanceBTC' => $BTCB,'balanceUSD' => $USDB,'ticker' => $ticker['ticker']['last'], 'totalBTC' => $BTCT, 'totalUSD' => $USDT ) );
+		$profit = array('initial' => array('balanceLTC' => $LTCB,'balanceUSD' => $USDB,'ticker' => $ticker['ticker']['last'], 'totalLTC' => $LTCT, 'totalUSD' => $USDT ) );
 	}
 	//
 	
-	$profit['buy'] = array('amountBTC' => 0, 'amountUSD' => 0);
-	$profit['sell'] = array('amountBTC' => 0, 'amountUSD' => 0);
+	$profit['buy'] = array('amountLTC' => 0, 'amountUSD' => 0);
+	$profit['sell'] = array('amountLTC' => 0, 'amountUSD' => 0);
 	if (@$filledOrders){
 		foreach ( $filledOrders as $key => $value ){
 			if ( $value['type'] == $exchangeBuySell[0] ){
-				$profit['buy']['amountBTC'] = $profit['buy']['amountBTC']  + $value['amount'];
+				$profit['buy']['amountLTC'] = $profit['buy']['amountLTC']  + $value['amount'];
 				$profit['buy']['amountUSD'] = $profit['buy']['amountUSD'] + $value['rate'] * $value['amount'];
 			}
 			if ( $value['type'] == $exchangeBuySell[1] ){
-				$profit['sell']['amountBTC'] = $profit['sell']['amountBTC']  + $value['amount'];
+				$profit['sell']['amountLTC'] = $profit['sell']['amountLTC']  + $value['amount'];
 				$profit['sell']['amountUSD'] = $profit['sell']['amountUSD'] + $value['rate'] * $value['amount'];
 			}
 			
 		}
-		//FIXED PHP Warning:  Division by zero in /arbot/buydownbotBTC.php on line 659
-		if ( $profit['buy']['amountBTC'] > 0 ) $profit['buy']['cost'] = round($profit['buy']['amountUSD']/$profit['buy']['amountBTC'],2);
-		if ( $profit['sell']['amountBTC'] > 0 ) $profit['sell']['cost'] = round($profit['sell']['amountUSD']/$profit['sell']['amountBTC'],2);	
+		//FIXED PHP Warning:  Division by zero in /arbot/buydownbotLTC.php on line 659
+		if ( $profit['buy']['amountLTC'] > 0 ) $profit['buy']['cost'] = round($profit['buy']['amountUSD']/$profit['buy']['amountLTC'],2);
+		if ( $profit['sell']['amountLTC'] > 0 ) $profit['sell']['cost'] = round($profit['sell']['amountUSD']/$profit['sell']['amountLTC'],2);	
 	}
 				
 	//Initial Balance
-	$tmp1 = round($profit['initial']['balanceBTC'],2);
+	$tmp1 = round($profit['initial']['balanceLTC'],2);
 	$tmp2 = round($profit['initial']['balanceUSD'],2);
-	print "Initial Balance: BTC:{$tmp1} USD:{$tmp2} Rate:{$profit['initial']['ticker']}  \n";
+	print "Initial Balance: LTC:{$tmp1} USD:{$tmp2} Rate:{$profit['initial']['ticker']}  \n";
 	
 	//Current Balance
-	$tmp1 = round($BTCB,2);
+	$tmp1 = round($LTCB,2);
 	$tmp2 = round($USDB,2);
-	print "Current Balance: BTC:{$tmp1} USD:{$tmp2} Rate:{$ticker['ticker']['last']}\n";
+	print "Current Balance: LTC:{$tmp1} USD:{$tmp2} Rate:{$ticker['ticker']['last']}\n";
 	
 	//Difference
 	$tmp1 = round($USDB - $profit['initial']['balanceUSD'],2);
-	$tmp2 = round($BTCB - $profit['initial']['balanceBTC'],2);
+	$tmp2 = round($LTCB - $profit['initial']['balanceLTC'],2);
 	$tmp3 = round(($ticker['ticker']['last'] - $profit['initial']['ticker']),2);
-	print "     Difference: BTC:{$tmp2} USD:{$tmp1} Rate:{$tmp3}\n";
+	print "     Difference: LTC:{$tmp2} USD:{$tmp1} Rate:{$tmp3}\n";
 	
 
-	if (@$profit['buy']['amountBTC'] > 0){
-		//BTC purchased {amountBTC} {costBTC} {totalcost}
-		$tmp1 = round($profit['buy']['amountBTC'],2);
+	if (@$profit['buy']['amountLTC'] > 0){
+		//LTC purchased {amountLTC} {costLTC} {totalcost}
+		$tmp1 = round($profit['buy']['amountLTC'],2);
 		$tmp2 = round($profit['buy']['cost'],2);
 		$tmp3 = round($profit['buy']['amountUSD'],2);
-		print "     Trade Buys: BTC:{$tmp1} Rate:{$tmp2} Total:{$tmp3}\n";
+		print "     Trade Buys: LTC:{$tmp1} Rate:{$tmp2} Total:{$tmp3}\n";
 	}
-	if (@$profit['sell']['amountBTC'] > 0){
-		//BTC sold      {amountBTC} {costBTC} {totalprofit}
-		$tmp1 = round($profit['sell']['amountBTC'],2);
+	if (@$profit['sell']['amountLTC'] > 0){
+		//LTC sold      {amountLTC} {costLTC} {totalprofit}
+		$tmp1 = round($profit['sell']['amountLTC'],2);
 		$tmp2 = round($profit['sell']['cost'],2);
 		$tmp3 = round($profit['sell']['amountUSD'],2);
-		print "    Trade Sells: BTC:{$tmp1} Rate:{$tmp2} Total:{$tmp3}\n";	
+		print "    Trade Sells: LTC:{$tmp1} Rate:{$tmp2} Total:{$tmp3}\n";	
 	}
 	//Gains
-	//sell - buy + BTCholdings*last*commision - initialBTCbalance*initialLast*commision
-	$tmp1 = round($profit['sell']['amountUSD'] - $profit['buy']['amountUSD'] + ($BTCB*$ticker['ticker']['last']*.998) - ($profit['initial']['balanceBTC']*$profit['initial']['ticker']*.998),2);
+	//sell - buy + LTCholdings*last*commision - initialLTCbalance*initialLast*commision
+	$tmp1 = round($profit['sell']['amountUSD'] - $profit['buy']['amountUSD'] + ($LTCB*$ticker['ticker']['last']*.998) - ($profit['initial']['balanceLTC']*$profit['initial']['ticker']*.998),2);
 	$tmp2 = round($USDT - $profit['initial']['totalUSD'] - $tmp1,2);
 	print "     Profit From Trading:{$tmp1}  \n";
 	print "        Unrealized Gains:{$tmp2}  \n";
-	//BTC Appreciation = start btc * start rate - startbtc * current rate
-	$tmp1 = round($profit['initial']['totalBTC'] * $profit['initial']['ticker'],2);
-	$tmp2 = round($profit['initial']['totalBTC'] * $ticker['ticker']['last'],2);
+	//LTC Appreciation = start LTC * start rate - startLTC * current rate
+	$tmp1 = round($profit['initial']['totalLTC'] * $profit['initial']['ticker'],2);
+	$tmp2 = round($profit['initial']['totalLTC'] * $ticker['ticker']['last'],2);
 	$tmp4 = round($tmp1 - $tmp2,2);
-	print " BTC Appreciation: Start:{$tmp1} Current:{$tmp2} Difference:{$tmp4}\n";
+	print " LTC Appreciation: Start:{$tmp1} Current:{$tmp2} Difference:{$tmp4}\n";
 	
 	//Run Value = profit - appreciation
-	//$tmp1 = round($profit['initial']['balanceBTC']*$profit['initial']['ticker']*.998 + $profit['initial']['balanceUSD'],2);
+	//$tmp1 = round($profit['initial']['balanceLTC']*$profit['initial']['ticker']*.998 + $profit['initial']['balanceUSD'],2);
 	$tmp3 =  round($USDT - $profit['initial']['totalUSD'],2);
 	print "  Program Value:{$tmp3}\n";
 	$message = $message . "  Program Value:{$tmp3}\n";
@@ -778,11 +793,11 @@ while ( 'the answer to life the universe and everything' != '41'){
 			$stop = array('target' ,'ticker' => $ticker['ticker']['last'],'over' => $ticker['ticker']['last']*(1+$microReBuy) ,'under' => $ticker['ticker']['last']*(1-$microReBuy),'count' => $stop['count']++ );
 			print_r($stop);
 			print "DEBUG THIS SECTION OF CODE";
-			print "BTC: COST: LAST:\n";
+			print "LTC: COST: LAST:\n";
 			print "Rebuy Targets: Over:{$stop['over']} Tick:{$stop['ticker']} Under:{$stop['under']}\n";
 		}
 		//$stop['target'] = $costBalance['ideal']*.998*.998*(1-$microStopLoss);
-		$microBTCRemaining = $BTCB;
+		$microLTCRemaining = $LTCB;
 		$microUSDRemaining = $USDB;
 ////////////////////////////////////////////////////////////////////
 // First run cancel, buy and sell
@@ -792,36 +807,36 @@ while ( 'the answer to life the universe and everything' != '41'){
 			//First Run, Cancel Orders
 			cancelOrders($exchangeBuySell[0]);
 			cancelOrders($exchangeBuySell[1]);
-			//First Run, Check USD, BTC, costBalance, place buy and sell.
+			//First Run, Check USD, LTC, costBalance, place buy and sell.
 //DEBUG check funds for buy and sell trades.
-			if ( $BTCB >= $minBidBTC ){
+			if ( $LTCB >= $minBidLTC ){
 				$executeTrade = TRUE; //turn on trading
 				$tmp1 = 0;
 				$microSellPrice = max($costBalance['ideal'],$ticker['ticker']['last']);
-				while ( $tmp1 <= ($BTCB/$engineAmount)*$microSellDivisor && $microBTCRemaining >= $minBidBTC ){
+				while ( $tmp1 <= ($LTCB/$engineAmount)*$microSellDivisor && $microLTCRemaining >= $minBidLTC ){
 					$type[$countOrder] = $exchangeBuySell[1];
 					$rate[$countOrder] = $microSellPrice + .01*$tmp1;
 					$rate[$countOrder] = ceil($rate[$countOrder]*100)/100;
-					$amount[$countOrder] = max($BTCB/(($BTCB/$engineAmount)*$microSellDivisor),$minBidBTC); //sell everything
+					$amount[$countOrder] = max($LTCB/(($LTCB/$engineAmount)*$microSellDivisor),$minBidLTC); //sell everything
 					$amount[$countOrder] = floor($amount[$countOrder]*pow(10,8))/pow(10,8);
-					//$amount[$countOrder] = min($amount[$countOrder],$BTCB);
-					$amount[$countOrder] = ($BTCB < $amount[$countOrder] ? $BTCB : $amount[$countOrder] ); //if we don't have that much B
+					//$amount[$countOrder] = min($amount[$countOrder],$LTCB);
+					$amount[$countOrder] = ($LTCB < $amount[$countOrder] ? $LTCB : $amount[$countOrder] ); //if we don't have that much B
 					print "Micro-Selling {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}\n";
-					$microBTCRemaining = $microBTCRemaining - $amount[$countOrder];
+					$microLTCRemaining = $microLTCRemaining - $amount[$countOrder];
 					$countOrder++;$tmp1++;
 				}
 				$countMicroSellTotal++;
 			}
-			if ( $USDB >= $minBidBTC*$ticker['ticker']['last'] ){
+			if ( $USDB >= $minBidLTC*$ticker['ticker']['last'] ){
 				$executeTrade = TRUE; //turn on trading
 				$tmp1 = 0;
-				while ( $tmp1 <= $microBuyDivisor && $microUSDRemaining >=  ($ticker['ticker']['last']-$microThreshold-$microIteration*$tmp1)*$minBidBTC ){
+				while ( $tmp1 <= $microBuyDivisor && $microUSDRemaining >=  ($ticker['ticker']['last']-$microThreshold-$microIteration*$tmp1)*$minBidLTC ){
 					$type[$countOrder] = $exchangeBuySell[0];
 					$rate[$countOrder] = $ticker['ticker']['last'] - $microThreshold - $microIteration*$tmp1;
 					$rate[$countOrder] = floor($rate[$countOrder]*100)/100;
 
 
-					$amount[$countOrder] = max( ($engineAmount*$microBuyAmountMultiplier[$tmp1]) ,$minBidBTC);
+					$amount[$countOrder] = max( ($engineAmount*$microBuyAmountMultiplier[$tmp1]) ,$minBidLTC);
 					$amount[$countOrder] = floor($amount[$countOrder]*pow(10,8))/pow(10,8);
 					print "Micro-Buying {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}\n";
 					$microUSDRemaining = $microUSDRemaining - $amount[$countOrder] * $rate[$countOrder];
@@ -837,11 +852,11 @@ while ( 'the answer to life the universe and everything' != '41'){
 
 
 
-			if ( $BTCB > $minBidBTC && $STOPLOSS ) { //in case we lifted stop loss above.
+			if ( $LTCB > $minBidLTC && $STOPLOSS ) { //in case we lifted stop loss above.
 				cancelOrders($exchangeBuySell[0]);
 				cancelOrders($exchangeBuySell[1]);
 				print "\n *********************************************** \n";
-				print "\n **** Stop Loss Activated - Liquidating BTC **** \n";
+				print "\n **** Stop Loss Activated - Liquidating LTC **** \n";
 				print "\n *********************************************** \n";
 				
 				$tmp1 = $tmp2 = 0;
@@ -856,10 +871,10 @@ while ( 'the answer to life the universe and everything' != '41'){
 					//	$rate[$countOrder] = ceil($rate[$countOrder]*100)/100;
 					//	$tmp2++;
 					//}
-					$amount[$countOrder] = max($BTCB/$microSellDivisor,$minBidBTC);
+					$amount[$countOrder] = max($LTCB/$microSellDivisor,$minBidLTC);
 					$amount[$countOrder] = floor($amount[$countOrder]*pow(10,8))/pow(10,8);
 					print "Micro-Selling {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}\n";
-					$BTC = $BTC - $amount[$countOrder];
+					$LTC = $LTC - $amount[$countOrder];
 					$countOrder++;$tmp1++;
 				}
 				$tmp1 = $tmp2 = 0;
@@ -870,14 +885,14 @@ while ( 'the answer to life the universe and everything' != '41'){
 		if ($countIteration > 2 && !$STOPLOSS ){ // && !$REBUY){ DEBUG Haven't build rebuy code yet, use primary engine
 			$countOrder = 0;
 			//If ticker is above Buy or Below Sell or we filled an order (Needs to be a buy order!)
-			if ( $countFilledIterationSell > 0 || $ticker['ticker']['last'] > $microThresholdBuy || $ticker['ticker']['last'] < $microThresholdSell || $countFilledIterationBuy > 0 || $b == 0 || $BTC > $minBidBTC || $ticker['ticker']['last'] >= $costBalance['ideal']) {
+			if ( $countFilledIterationSell > 0 || $ticker['ticker']['last'] > $microThresholdBuy || $ticker['ticker']['last'] < $microThresholdSell || $countFilledIterationBuy > 0 || $b == 0 || $LTC > $minBidLTC || $ticker['ticker']['last'] >= $costBalance['ideal']) {
 
-				if ( $BTC > $minBidBTC || $USDB >= ($ticker['ticker']['last'] - $microThreshold)*$minBidBTC || $countFilledIterationBuy > 0 ){
-					//FIXED change USD test from micro amount to minbidbtc.
-					//FIXED changed micro, test, from btc > amount to btc > minbid to sell after an error.
+				if ( $LTC > $minBidLTC || $USDB >= ($ticker['ticker']['last'] - $microThreshold)*$minBidLTC || $countFilledIterationBuy > 0 ){
+					//FIXED change USD test from micro amount to minbidLTC.
+					//FIXED changed micro, test, from LTC > amount to LTC > minbid to sell after an error.
 					if ( $countFilledIterationBuy > 0 ) print "Buy Order Filled.\n";
 					if ( $USDB >= ($ticker['ticker']['last'] - $microThreshold)*$engineAmount ) print "USD Funds Available {$USDB}.\n";
-					if ( $BTC > $minBidBTC ) print "BTC Funds Available {$BTC}.\n";
+					if ( $LTC > $minBidLTC ) print "LTC Funds Available {$LTC}.\n";
 					if ( $b == 0 ) print "No open buy orders.\n"; //FIXED added B == 0 will rebuy after stoploss.
 					if ( $ticker['ticker']['last'] > $microThresholdBuy || $ticker['ticker']['last'] < $microThresholdSell) print "Threshold Crossed.\n";
 					if ( $ticker['ticker']['last'] >= $costBalance['ideal'] ) print "Balance Ideal sell price crossed.  Selling.\n";
@@ -888,20 +903,20 @@ while ( 'the answer to life the universe and everything' != '41'){
 
 ////////////////////////////////////////////////////////////////////
 // Sell Code Block
-//DEBUG changed all amounts to BTC from BTCB as we are not cancelling orders here
+//DEBUG changed all amounts to LTC from LTCB as we are not cancelling orders here
 
-					if ( $BTC > $minBidBTC || ($ticker['ticker']['last'] >= $costBalance['ideal'] && $costBalance['ideal'] > 0) || $ticker['ticker']['last'] < $microThresholdSell){ //Sell
+					if ( $LTC > $minBidLTC || ($ticker['ticker']['last'] >= $costBalance['ideal'] && $costBalance['ideal'] > 0) || $ticker['ticker']['last'] < $microThresholdSell){ //Sell
 //----------------------------------------------------------
 //------------------- Cost Information  -------------------
-//Order Costs: Not holding any BTC! 
+//Order Costs: Not holding any LTC! 
 //----------------------------------------------------------
 //------------------- Profit Information  -------------------
-//Initial Balance: BTC:0 USD:580.06 Rate:121.26682  
-//Current Balance: BTC:0 USD:580.06 Rate:121.44665
-//     Difference: BTC:0 USD:0 Rate:0.18
+//Initial Balance: LTC:0 USD:580.06 Rate:121.26682  
+//Current Balance: LTC:0 USD:580.06 Rate:121.44665
+//     Difference: LTC:0 USD:0 Rate:0.18
 //     Profit From Trading:0  
 //        Unrealized Gains:0  
-// BTC Appreciation: Start:580.06 Current:580.92 Difference:-0.86
+// LTC Appreciation: Start:580.06 Current:580.92 Difference:-0.86
 //  Program Value:0
 //----------------------------------------------------------
 //------------------- Micro-Trade Block -------------------
@@ -912,11 +927,11 @@ while ( 'the answer to life the universe and everything' != '41'){
 							NULL;
 							//Set amount
 							$microSellAmount = $costFilled['shares']*.998;//Lol i put total //DEBUG Needs to be reduced for commision?
-							$microSellAmount = $BTC; //My .998 multiplier was acurate to to many decimals?  its either this or floor.
+							$microSellAmount = $LTC; //My .998 multiplier was acurate to to many decimals?  its either this or floor.
 							//Set price
 							$microSellPrice = $costFilled['ideal'];
 							
-						}  elseif ($ticker['ticker']['last'] >= $costBalance['ideal'] || $microSellCancel) {// We didn't fill orders but have BTC or want to cancel
+						}  elseif ($ticker['ticker']['last'] >= $costBalance['ideal'] || $microSellCancel) {// We didn't fill orders but have LTC or want to cancel
 //------------------- Micro-Trade Block -------------------
 //Checking Micro-Trades: USD Funds Available 2202.166858729.
 //Threshold Crossed.
@@ -926,17 +941,17 @@ while ( 'the answer to life the universe and everything' != '41'){
 //Cancelled 0 sell Orders 
 							cancelOrders($exchangeBuySell[1]);
 							//keep amount
-							$microSellAmount = $BTCB; //We always sell all BTC available
+							$microSellAmount = $LTCB; //We always sell all LTC available
 							//set price
 							$microSellPrice = $costBalance['ideal'];
 						} else {
-							$microSellAmount = $BTC;
+							$microSellAmount = $LTC;
 							$microSellPrice = $costBalance['ideal'];
 						}
 						///// SELL TRADE /////
 						$tmp1 = $tmp2 = 0;
 						//DEBUG FIXED change <= to < for sell divisor, if 1 order is requested the initial value is 0 so it must be less than.
-						while ( $tmp1 < $microSellDivisor && $microBTCRemaining >= $minBidBTC ){
+						while ( $tmp1 < $microSellDivisor && $microLTCRemaining >= $minBidLTC ){
 							$executeTrade = TRUE; //turn on trading
 							$microTicker = $ticker['ticker']['last'];
 							$type[$countOrder] = $exchangeBuySell[1];
@@ -950,14 +965,14 @@ while ( 'the answer to life the universe and everything' != '41'){
 								$rate[$countOrder] = ceil($rate[$countOrder]*100)/100;
 								$tmp2++;
 							}
-							$amount[$countOrder] = max($microSellAmount/$microSellDivisor,$minBidBTC);
+							$amount[$countOrder] = max($microSellAmount/$microSellDivisor,$minBidLTC);
 							$amount[$countOrder] = floor($amount[$countOrder]*pow(10,8))/pow(10,8);
 							print "Micro-Selling {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}\n";
-							$microBTCRemaining = $microBTCRemaining - $amount[$countOrder];
+							$microLTCRemaining = $microLTCRemaining - $amount[$countOrder];
 							$countOrder++;$tmp1++;
 						}
-						//if ( $microBTCRemaining < 0 ){
-						//	$amount[$countOrder-1] = $amount[$countOrder-1] + $microBTCRemaining; //Debug last order over amount, not working...
+						//if ( $microLTCRemaining < 0 ){
+						//	$amount[$countOrder-1] = $amount[$countOrder-1] + $microLTCRemaining; //Debug last order over amount, not working...
 						//	$countOrder--;
 						//}	
 						$tmp1 = $tmp2 = 0;
@@ -969,12 +984,12 @@ while ( 'the answer to life the universe and everything' != '41'){
 						//array_sum($tmp0) / count($tmp0); //Fill an order first $microTicker + $microThreshold;//*$countMicroSell;//Trailing Buy orders, if this sell order fills, Buy More
 						$microThresholdSell = $ticker['ticker']['last'] - $microThreshold; //Sell again if last drops below to create advancing sells - Micro-Spike
 						print "New-Micro-Targets: Over:\${$microThresholdBuy} Tick:\${$ticker['ticker']['last']} Under:\${$microThresholdSell}\n";
-					} else print "BTC Funds Not Available. \n";
+					} else print "LTC Funds Not Available. \n";
 ////////////////////////////////////////////////////////////////////
 // BUY Code Block
 //FIXED no buy orders active If threshold was crossed and we have funds or there are no buy orders and we have funds
 //DEBUG TESTING if we filled a sell order replace all buy  orders.
-					if ( ($ticker['ticker']['last'] > $microThresholdBuy || $b == 0 || $countFilledIterationSell > 0 ) && $USDB >= ($ticker['ticker']['last'] - $microThreshold)*$minBidBTC  ){ //
+					if ( ($ticker['ticker']['last'] > $microThresholdBuy || $b == 0 || $countFilledIterationSell > 0 ) && $USDB >= ($ticker['ticker']['last'] - $microThreshold)*$minBidLTC  ){ //
 						cancelOrders($exchangeBuySell[0]);
 						print "\n";
 						
@@ -989,8 +1004,8 @@ while ( 'the answer to life the universe and everything' != '41'){
 								$tmp2++;
 								$rate[$countOrder] = $ticker['ticker']['last'] - $microThreshold - $microIteration*$tmp1 - $microIteration*$tmp2;
 							}
-							$amount[$countOrder] = max($BTCB/(($BTCB/$engineAmount)*$microSellDivisor),$minBidBTC); //sell everything
-							$amount[$countOrder] = max( ($engineAmount*$microBuyAmountMultiplier[$tmp1]) ,$minBidBTC);
+							$amount[$countOrder] = max($LTCB/(($LTCB/$engineAmount)*$microSellDivisor),$minBidLTC); //sell everything
+							$amount[$countOrder] = max( ($engineAmount*$microBuyAmountMultiplier[$tmp1]) ,$minBidLTC);
 							$amount[$countOrder] = floor($amount[$countOrder]*pow(10,8))/pow(10,8);
 							print "Micro-Buying {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}\n";
 							$microUSDRemaining = $microUSDRemaining - $amount[$countOrder] * $rate[$countOrder];
@@ -1032,24 +1047,24 @@ while ( 'the answer to life the universe and everything' != '41'){
 		$spreadHighLow = $ticker['ticker']['high'] - $ticker['ticker']['low'];
 	
 		//Calculate new preffered balance amounts
-		$reBalanceBTC = floor(($distanceFromLow/$spreadHighLow)*100)/100;
-		$reBalanceUSD = 1-$reBalanceBTC; //Prefer USD during rebalance
+		$reBalanceLTC = floor(($distanceFromLow/$spreadHighLow)*100)/100;
+		$reBalanceUSD = 1-$reBalanceLTC; //Prefer USD during rebalance
 		
-		$currentBalanceBTC = floor(($BTCB/$BTCT)*100)/100;
-		$currentBalanceUSD = 1-$currentBalanceBTC; //$USDB/$USDT;
+		$currentBalanceLTC = floor(($LTCB/$LTCT)*100)/100;
+		$currentBalanceUSD = 1-$currentBalanceLTC; //$USDB/$USDT;
 		
 		$reBalanceUSDDisplay = $reBalanceUSD*100;
-		$reBalanceBTCDisplay = $reBalanceBTC*100;
+		$reBalanceLTCDisplay = $reBalanceLTC*100;
 		$currentBalanceUSDDisplay = $currentBalanceUSD*100;
-		$currentBalanceBTCDisplay = $currentBalanceBTC*100;
+		$currentBalanceLTCDisplay = $currentBalanceLTC*100;
 	
 		print "------------ Portfolio Balancing Information  ------------\n";
 		$tmp1 = round($distanceFromHigh,2);$tmp2 = round($distanceFromLow,2);$tmp3 = round($spreadHighLow,2);
 		print "From High:{$tmp1} From Low:{$tmp2} Spread:{$tmp3}\n";
 		$tmp1 = $tmp2 = $tmp3 = NULL;
 		
-		print "Current Balance: USD:{$currentBalanceUSDDisplay}% BTC:{$currentBalanceBTCDisplay}%\n";
-		print "Target  Balance: USD:{$reBalanceUSDDisplay}% BTC:{$reBalanceBTCDisplay}%\n";
+		print "Current Balance: USD:{$currentBalanceUSDDisplay}% LTC:{$currentBalanceLTCDisplay}%\n";
+		print "Target  Balance: USD:{$reBalanceUSDDisplay}% LTC:{$reBalanceLTCDisplay}%\n";
 	
 		////////////////////////////////////////////////////////////////////
 		//Setup Buy orders
@@ -1057,8 +1072,8 @@ while ( 'the answer to life the universe and everything' != '41'){
 		$balanceBuy = FALSE;
 		print "------------------- Mini-Balance-Trade Block -------------------\n";
 		print "Checking Micro-Balance Buy Funds and Balance: ";
-		if ( $BALANCE && ($USDT*($currentBalanceUSD-$reBalanceUSD))/($ticker['ticker']['last'] - $threshold)  > 0 && $balanceSell = FALSE ){ //Trade USD for BTC
-			print "Increasing BTC - Decreasing USD. \n";
+		if ( $BALANCE && ($USDT*($currentBalanceUSD-$reBalanceUSD))/($ticker['ticker']['last'] - $threshold)  > 0 && $balanceSell = FALSE ){ //Trade USD for LTC
+			print "Increasing LTC - Decreasing USD. \n";
 			$executeTrade = TRUE; //turn on trading
 			$balanceBuy = TRUE; //Let the next part know we bought
 			$type[$countOrder] = $exchangeBuySell[0]; //The type of trade
@@ -1072,18 +1087,18 @@ while ( 'the answer to life the universe and everything' != '41'){
 		} else print "No Buy Trades.\n";
 		////////////////////////////////////////////////////////////////////
 		//Setup Sell Orders
-		$BTCremaining = $BTC;
+		$LTCremaining = $LTC;
 		$balanceSell = FALSE;
 		print "Checking Micro-Balance Sell Funds and Balance: ";
-		if ( $BALANCE && $BTCT*($currentBalanceBTC-$reBalanceBTC) > 0  && $balanceBuy = FALSE ){ //Trade BTC for USD
-			print "Increasing USD - Decreasing BTC. \n";
+		if ( $BALANCE && $LTCT*($currentBalanceLTC-$reBalanceLTC) > 0  && $balanceBuy = FALSE ){ //Trade LTC for USD
+			print "Increasing USD - Decreasing LTC. \n";
 			$executeTrade = TRUE; //turn on trading
 			$balanceSell = TRUE;
 			$type[$countOrder] = $exchangeBuySell[1]; //The type of trade
 			$rate[$countOrder] = ceil((($ticker['ticker']['last'] + $threshold))*100)/100;
-			$amount[$countOrder] = round( ($BTCT*($currentBalanceBTC-$reBalanceBTC)) ,2); //the amount of the trade
+			$amount[$countOrder] = round( ($LTCT*($currentBalanceLTC-$reBalanceLTC)) ,2); //the amount of the trade
 			$amount[$countOrder] = min($amount[$countOrder],$balanceAmount);
-			$BTCremaining = $BTCremaining - $amount[$countOrder] ;
+			$LTCremaining = $LTCremaining - $amount[$countOrder] ;
 			print "Selling {$amount[$countOrder]}B at a rate of \${$rate[$countOrder]} \${$USDremaining} left.\n";
 			$thresholdSell = $rate[$countOrder];
 			$countOrder++;
@@ -1093,7 +1108,7 @@ while ( 'the answer to life the universe and everything' != '41'){
 //////////////////////////////////////////////////////////JOSH's ENGINE/////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	if ($JOSH){
-		//$joshAmount = 5; //In BTC
+		//$joshAmount = 5; //In LTC
 		//$joshThreshold = 5; //In USD
 		//$joshStopLoss = .05; //as a percentage
 		//$joshReBuy = .05; //as a percentage
@@ -1101,7 +1116,7 @@ while ( 'the answer to life the universe and everything' != '41'){
 	////////////////////////////////////////////////////////////////////
 	//Reset Funds and print Header Block
 		$USDremaining = $USD;
-		$BTCremaining = $BTC;
+		$LTCremaining = $LTC;
 		print "------------------- JOSH's ENGINE TRADE BLOCK -------------------\n";
 		print "Threshold: Fees:{$exchangeCommision}% Trades:{$joshThreshold}";
 		$tmp1 = $joshTicker + $joshThreshold; $tmp2 = $joshTicker - $joshThreshold;
@@ -1133,15 +1148,15 @@ while ( 'the answer to life the universe and everything' != '41'){
 		} else print "No Buy Trades.\n";
 	////////////////////////////////////////////////////////////////////
 	//Setup Sell Orders
-		if ( 'josh' == 'cool' && $BTC > $joshAmount ){ //SELL
+		if ( 'josh' == 'cool' && $LTC > $joshAmount ){ //SELL
 			print "\n";
 			$executeTrade = TRUE; //turn on trading
 			
 			$type[$countOrder] = $exchangeSellSell[1]; //The type of trade
 			$rate[$countOrder] = ceil100($ticker['ticker']['last'] + $joshThreshold);
 			$amount[$countOrder] = $joshAmount; //the amount of the trade
-			$BTCremaining = $BTCremaining - $amount[$countOrder];
-			print "Selling {$amount[$countOrder]}B at a rate of \${$rate[$countOrder]} \${$BTCremaining} left.\n";
+			$LTCremaining = $LTCremaining - $amount[$countOrder];
+			print "Selling {$amount[$countOrder]}B at a rate of \${$rate[$countOrder]} \${$LTCremaining} left.\n";
 			$countOrder++;
 		} else print "No Sell Trades.\n";
 	}
@@ -1252,10 +1267,10 @@ while ( 'the answer to life the universe and everything' != '41'){
 ////////////////////////////////////////////////////////////////////
 //Setup Sell Orders
 ////////////////////////////////////////////////////////////////////
-	$BTCremaining = $BTC;
+	$LTCremaining = $LTC;
 	print "Checking Sell Funds and Threshold: ";
-	if ( ( ($ema1 < $ema2 && $ema2 < $ema3 ) && $SELL && $BTCremaining > $minBidBTC*$sharesSell  && !$BALANCE )
-	    || ( $BALANCE && $BTCT*($currentBalanceBTC-$reBalanceBTC) > 0 ) ){ //The price is moving upward, set buy orders
+	if ( ( ($ema1 < $ema2 && $ema2 < $ema3 ) && $SELL && $LTCremaining > $minBidLTC*$sharesSell  && !$BALANCE )
+	    || ( $BALANCE && $LTCT*($currentBalanceLTC-$reBalanceLTC) > 0 ) ){ //The price is moving upward, set buy orders
 		print "Selling. \n";
 		$executeTrade = TRUE; //turn on trading
 		$SELL = FALSE;$BUY = TRUE; //Only buy after selling and sell after buying
@@ -1266,9 +1281,9 @@ while ( 'the answer to life the universe and everything' != '41'){
 			$type[$countOrder] = $exchangeBuySell[1]; //The type of trade
 			$rate[$countOrder] = ceil(($idealSellRate*(1+$profitTrade)*100))/100;
 			if ($GOX) $rate[$countOrder] = ceil((($ticker['ticker']['last'] + $threshold))*100)/100;
-			$amount[$countOrder] = round( ($BTCT*($currentBalanceBTC-$reBalanceBTC)) ,2); //the amount of the trade
+			$amount[$countOrder] = round( ($LTCT*($currentBalanceLTC-$reBalanceLTC)) ,2); //the amount of the trade
 			$amount[$countOrder] = min($amount[$countOrder],$amountTrade);
-			$BTCremaining = $BTCremaining - $amount[$countOrder] ;
+			$LTCremaining = $LTCremaining - $amount[$countOrder] ;
 			print "Selling {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}U {$USDremaining} left.\n";
 			$thresholdSell = $rate[$countOrder];
 			$countSells++;$countOrder++;
@@ -1279,9 +1294,9 @@ while ( 'the answer to life the universe and everything' != '41'){
 			$type[$countOrder] = $exchangeBuySell[1]; //The type of trade
 			$rate[$countOrder] = ceil(($idealSellRate*(1+($profitTrade*$countSells)))*100)/100 ; //Compound interest style sell rate http://php.net/manual/en/function.pow.php
 			$rate[$countOrder] = max($rate[$countOrder],$ticker['ticker']['last']+$threshold*$countSells);
-			$amount[$countOrder] = round(($amountSellTrade[$countSells]*$BTC),2); //the amount of the trade
-			$BTCremaining = $BTCremaining - $amount[$countOrder] ;
-			print "Selling {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}U {$BTCremaining} left.\n";
+			$amount[$countOrder] = round(($amountSellTrade[$countSells]*$LTC),2); //the amount of the trade
+			$LTCremaining = $LTCremaining - $amount[$countOrder] ;
+			print "Selling {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}U {$LTCremaining} left.\n";
 			$countSells++;$countOrder++;
 			
 			if ( $sellDivisor > 1 ){
@@ -1290,9 +1305,9 @@ while ( 'the answer to life the universe and everything' != '41'){
 					$type[$countOrder] = $exchangeBuySell[1]; //The type of trade
 					$rate[$countOrder] = ceil(($idealSellRate*(1+($profitTrade*$countSells)))*100)/100 ; //Compound interest style sell rate http://php.net/manual/en/function.pow.php
 					$rate[$countOrder] = max($rate[$countOrder],$ticker['ticker']['last']+$threshold*$countSells);
-					$amount[$countOrder] = round(($amountSellTrade[$countSells]*$BTC),2); //the amount of the trade
-					$BTCremaining = $BTCremaining - $amount[$countOrder] ;
-					print "Selling {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}U {$BTCremaining} left.\n";
+					$amount[$countOrder] = round(($amountSellTrade[$countSells]*$LTC),2); //the amount of the trade
+					$LTCremaining = $LTCremaining - $amount[$countOrder] ;
+					print "Selling {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}U {$LTCremaining} left.\n";
 					$countSells++;$countOrder++;
 				}
 			}
@@ -1302,9 +1317,9 @@ while ( 'the answer to life the universe and everything' != '41'){
 				$type[$countOrder] = $exchangeBuySell[1]; //The type of trade
 				$rate[$countOrder] = ceil(($idealSellRate*(1+($profitTrade*$countSells)))*100)/100 ; //Compound interest style sell rate http://php.net/manual/en/function.pow.php
 				$rate[$countOrder] = max($rate[$countOrder],$ticker['ticker']['last']+$threshold*$countSells);
-				$amount[$countOrder] = $BTCremaining; //the amount of the trade
-				$BTCremaining = $BTCremaining - $amount[$countOrder];
-				print "Selling {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}U {$BTCremaining} left.\n";
+				$amount[$countOrder] = $LTCremaining; //the amount of the trade
+				$LTCremaining = $LTCremaining - $amount[$countOrder];
+				print "Selling {$amount[$countOrder]}B at a rate of {$rate[$countOrder]}U {$LTCremaining} left.\n";
 				$countSells++;$countOrder++; 
 			}
 				
@@ -1329,12 +1344,12 @@ while ( 'the answer to life the universe and everything' != '41'){
 		$countTrades = 0;
 		while ( $countTrades <= $countOrder ){
 			if ( !empty($type[$countTrades]) ){
-				if (@$BTCE) $trade = json_decode(btce_query("Trade", array("pair" => "btc_usd", "type" => $type[$countTrades], "amount" => $amount[$countTrades], "rate" => $rate[$countTrades])), TRUE);
+				if (@$BTCE) $trade = json_decode(BTCE_query("Trade", array("pair" => "LTC_usd", "type" => $type[$countTrades], "amount" => $amount[$countTrades], "rate" => $rate[$countTrades])), TRUE);
 				if ( $trade['success'] !== 1 ) {
-					print "Failed: {$type[$countTrades]} {$amount[$countTrades]}BTC at \${$rate[$countTrades]}\n";
+					print "Failed: {$type[$countTrades]} {$amount[$countTrades]}LTC at \${$rate[$countTrades]}\n";
 					//print "\n Result:";
 					print_r($trade);
-					print "USD {$USD} B{$USDB} T{$USDT} BTC {$BTC} B{$BTCB} T{$BTCB}\n";
+					print "USD {$USD} B{$USDB} T{$USDT} LTC {$LTC} B{$LTCB} T{$LTCB}\n";
 					//print "\n Type:{$type[$countTrades]}";
 					//print "\n Amount:{$amount[$countTrades]}";
 					//print "\n Rate:{$rate[$countTrades]}\n";
@@ -1344,7 +1359,7 @@ while ( 'the answer to life the universe and everything' != '41'){
 					$countValid++;
 					//print "\n Result:";
 					//print_r($trade);
-					print "Ordered: {$type[$countTrades]} {$amount[$countTrades]}BTC at \${$rate[$countTrades]}\n";
+					print "Ordered: {$type[$countTrades]} {$amount[$countTrades]}LTC at \${$rate[$countTrades]}\n";
 					$ordersPlaced[$trade['return']['order_id']] = array(
 					"type" => $type[$countTrades],
 					"amount" => $amount[$countTrades],
@@ -1353,11 +1368,11 @@ while ( 'the answer to life the universe and everything' != '41'){
 					//print_r($ordersPlaced);
 				}
 				// The message
-				$message = $message . "Type:{$type[$countTrades]} Amount:{$amount[$countTrades]}BTC at Rate:{$rate[$countTrades]}\n";
+				$message = $message . "Type:{$type[$countTrades]} Amount:{$amount[$countTrades]}LTC at Rate:{$rate[$countTrades]}\n";
 				}
 			$countTrades++;
 		}
-		$message = $message . "\n BTC Balance:{$BTCB} USD Bal:{$USDB}\n";
+		$message = $message . "\n LTC Balance:{$LTCB} USD Bal:{$USDB}\n";
 		mail($emailRCPTo, $emailSubject, $message);
 	}
 	$message = NULL;
@@ -1382,14 +1397,14 @@ while ( 'the answer to life the universe and everything' != '41'){
 		$result = ceil($value*100)/100;
 		return $result;
 	}
-	function btce_query( $method = NULL, $req = array() )
+	function BTCE_query( $method = NULL, $req = array() )
 	{
-	global $btceKey;
-	global $btceSecret;
+	global $BTCEKey;
+	global $BTCESecret;
 	global $nonce;
 	
-	$key = $btceKey;
-	$secret = $btceSecret;
+	$key = $BTCEKey;
+	$secret = $BTCESecret;
 		// API settings
 		$req['method'] = $method;
 		$req['nonce'] = $GLOBALS['nonce']++;
@@ -1407,7 +1422,7 @@ while ( 'the answer to life the universe and everything' != '41'){
 		curl_setopt($ch, CURLOPT_HEADER, FALSE);
 		curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
 		curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/4.0 (compatible; BTCE PHP client; '.php_uname('s').'; PHP/'.phpversion().')');
-		curl_setopt($ch, CURLOPT_URL, 'https://btc-e.com/tapi');
+		curl_setopt($ch, CURLOPT_URL, 'https://LTC-e.com/tapi');
 		curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
 		curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
@@ -1446,17 +1461,17 @@ while ( 'the answer to life the universe and everything' != '41'){
 		global $countCancelled;
 		global $ordersPlaced;
 		
-		if (@$GLOBALS['BTCE']) $return = json_decode(btce_query("OrderList"), TRUE);
+		if (@$GLOBALS['BTCE']) $return = json_decode(BTCE_query("OrderList"), TRUE);
 		
 		if($return['success'] > 0){
 			$countCancel=0;
 			$tmp2 = 0; print "Canceling Orders\n";
 			foreach ($return['return'] as $key => $value){
 				$order_id = $key;
-				if ( $value['type'] == $type && (@$value['pair'] == "btc_usd" || @$value['item'] == "BTC") ){ //$value['amount'] != $engineAmount &&
+				if ( $value['type'] == $type && (@$value['pair'] == "LTC_usd" || @$value['item'] == "LTC") ){ //$value['amount'] != $engineAmount &&
 					if (!$simulate && $countCancel >= $maxPendingOrders ) {
 						if ( $tmp2 == 50 ) {print "\nCanceling";$tmp2=0;} else {print ".";$tmp2++;};
-						if (@$BTCE) $trade = json_decode(btce_query("CancelOrder", array("order_id" => $order_id)), TRUE);
+						if (@$BTCE) $trade = json_decode(BTCE_query("CancelOrder", array("order_id" => $order_id)), TRUE);
 					}
 					if ($trade['success'] == 1){
 						$countCancel++;
@@ -1469,7 +1484,7 @@ while ( 'the answer to life the universe and everything' != '41'){
 			print "\nCancelled {$countCancel} {$type} Orders \n";
 		}
 		while ( empty($return) ){
-			if (@$GLOBALS['BTCE']) $GLOBALS['return'] = json_decode(btce_query('getInfo'), TRUE);
+			if (@$GLOBALS['BTCE']) $GLOBALS['return'] = json_decode(BTCE_query('getInfo'), TRUE);
 			time_nanosleep(0,$sleepCancel);
 		}
 	}
