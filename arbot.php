@@ -54,7 +54,6 @@ $ENGINE = "M";
 //B - Filled Engine
 //FF - 50/50 Balance Engine
 //JOSH - JOSH's Trading Engine
-//JUDE - JUDE's Trading Engine
 //M - Micro-roll engine
 //F
 
@@ -144,9 +143,6 @@ switch ($ENGINE) {
 		$joshThreshold = 5; //In USD
 		$joshStopLoss = .05; //as a percentage
 		$joshReBuy = .05; //as a percentage
-		break;
-	case "JUDE":
-		$JUDE = TRUE;
 		break;
 }
 
