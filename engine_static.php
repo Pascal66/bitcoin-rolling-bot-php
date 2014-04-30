@@ -6,6 +6,18 @@
 ////////////////////////////////////////////////////////////////////
 
 
+//set reference ticker
+
+//buy at ticker -$5
+//sell at ticker +$5
+
+//repeat until all funds are used
+
+//wait for a $5 movement
+
+//Do it again
+
+
 
 
 
