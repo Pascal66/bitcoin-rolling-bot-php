@@ -1,5 +1,4 @@
-<pre>
-<?php>
+<?php
 ////////////////////////////////////////////////////////////////////
 //Programs
 ////////////////////////////////////////////////////////////////////
@@ -36,11 +35,12 @@
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
 //FEATURES
+date_default_timezone_set('Europe/Berlin'); //Possible Timezones: http://www.php.net/manual/de/timezones.php
 $DEBUG = TRUE; //Should the program Print Debug information
 $simulate = FALSE; //RUNS IN SIMULATION MODE, NO TRADES ARE MADE just PRINT OUTPUT
-$exchange = "G"; //Pick an exchange to run on
-if ($exchange == "G") {$GOX = TRUE;$BTCE = FALSE;}
-if ($exchange == "E") {$BTCE = TRUE;$GOX = FALSE;}
+$exchange = "E"; //Pick an exchange to run on
+$BTCE = TRUE;
+
 
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
@@ -114,17 +114,7 @@ switch ($ENGINE) {
 		$microReBuy = .10; //The price change to rebuy after a loss
 		$microBuyAmountMultiplier = engineMultiplier('double',2,$microBuyDivisor);
 		
-		if ($GOX){
-		$microSellDivisor = 10; //number of Sell orders to place
-		$microBuyDivisor = 10; //Number of Buy orders to place
-		$microIteration = .5;//USD$ iteration for multiple orders
-		$microAmount = .01; //Amount of BTC per mini buy/sell round
-		$microProfit = .004; //The profit threshold, this is the minimum profit per trade to make,
-		$microStopLoss = 1; //The stop loss percent, Sell out at a loss
-		$microReBuy = .1; //The price change to rebuy after a loss
-		$microBuyAmountMultiplier = engineMultiplier('rand',2,$microBuyDivisor);
-		}
-		
+				
 		$microSellCancel = TRUE; //Cancel orders every sell or keep old sell orders?
 		////////////////////////////////////////////////////////////////////
 		//NOT USER CONFIGURABLE
@@ -188,8 +178,8 @@ $maxOrders = 100;//$maxOrders = max orders to pull should be set?  100?
 
 //Send email reports when orders are placed
 $emailRCPTo = "SET IN KEY.PHP INCLUDE FILE";
-$btceKey = ''; // your API-key
-$btceSecret = ''; // your Secret-key
+$btceKey = 'CHANGE ME'; // your API-key
+$btceSecret = 'CHANGE ME'; // your Secret-key
 
 $emailSubject = "BTCbot Trade on {$exchange}";
  
@@ -210,13 +200,12 @@ $engineAmount = ( min($microAmount/$microSellDivisor,$microAmount/$microBuyDivis
 
 
 if ($exchange == "E") $exchangeCommision = .002; //The exchange commision percent (as 1 - commision as decimal) 
-if ($exchange == "G") $exchangeCommision = .0001; //Gox Commision
+
 
 //BTC-E Currency pairs & bid ask JSON names
 $btcesymbol = array("btc_usd", "ltc_btc", "ltc_usd");
 $btcebidorask = array("bids", "asks");
 if (@$BTCE) $exchangeBuySell = array("buy","sell");
-if (@$GOX) $exchangeBuySell = array("bid","ask");
 
 $executeTrade = $postTrade = FALSE;
 $SELL = $BUY = TRUE;
@@ -344,10 +333,6 @@ while ( 'the answer to life the universe and everything' != '41'){
 	$ticker = array();
         $sleep=rand(1, 10); //set a random sleep timer
 	while ( empty($ticker) ){
-		if (@$GOX) {
-			$ticker = json_decode(send( 'https://data.mtgox.com/api/2/BTCUSD/money/ticker' ), TRUE );
-			$ticker['ticker']['last'] = $ticker['data']['last']['value'];
-		}
 		if (@$BTCE) $ticker = json_decode(send( 'https://btc-e.com/api/2/btc_usd/ticker' ), TRUE );
 		if( !@$ticker ){
 			print_r($return);
@@ -434,35 +419,13 @@ while ( 'the answer to life the universe and everything' != '41'){
 	}//END 	while ( empty($ticker) )
 ////////////////////////////////////////////////////////////////////
 //Poll All data for trading	
-	//reset the data points and pull all at once (GOX should be an exception because of rate limiting.)
-	$ticker = $return = $orderList = $TradeHistory = array(); //blank the tickers
+		$ticker = $return = $orderList = $TradeHistory = array(); //blank the tickers
 	while( empty($ticker) || empty($return) || empty($orderList) || empty($TradeHistory) ){
 		if ($BTCE){
 			$ticker = json_decode(send( 'https://btc-e.com/api/2/btc_usd/ticker' ), TRUE ); // BTCE Ticker
 			$orderList = json_decode(btce_query("OrderList", array("active" => 1, "pair" => "btc_usd")), TRUE);
 			$TradeHistory = json_decode(btce_query("TradeHistory", array("count" => $maxOrders, "pair" => "btc_usd")), TRUE);
 			$return = json_decode(btce_query('getInfo'), TRUE); //BTCE account info
-		}
-		if ($GOX){
-			$ticker = json_decode(send( 'https://data.mtgox.com/api/2/BTCUSD/money/ticker' ), TRUE ); //GOX Ticker
-			$ticker['ticker']['last'] = $ticker['data']['last']['value'];
-			$ticker['ticker']['buy'] = $ticker['data']['buy']['value'];
-			$ticker['ticker']['sell'] = $ticker['data']['sell']['value'];
-			$ticker['ticker']['high'] = $ticker['data']['high']['value'];
-			$ticker['ticker']['low'] = $ticker['data']['low']['value'];
-			$return = json_decode(mtgox_query('BTCUSD/money/info'), TRUE); //GOX account Info
-			( $return['result'] == "success" ? $return['success'] = 1 : $return['success'] = 0); //Translate GOX to BTCE
-			$return['return']['funds']['btc'] = $return['data']['Wallets']['BTC']['Balance']['value'];//Translate GOX to BTCE
-			$return['return']['funds']['usd'] = $return['data']['Wallets']['USD']['Balance']['value'];//Translate GOX to BTCE
-			$orderList = json_decode(mtgox_query('BTCUSD/money/orders'), TRUE);
-			$TradeHistory = json_decode(mtgox_query('BTCUSD/money/trades/fetch'), TRUE); //GOX account Info
-			$TradeHistory['return'] = $TradeHistory['data'];
-			unset($TradeHistory['data']);
-			foreach ( $TradeHistory['return'] as $key => $value){
-				$TradeHistory['return'][$key]['type'] = $TradeHistory['return'][$key]['trade_type'];
-				$TradeHistory['return'][$key]['rate'] = $TradeHistory['return'][$key]['price'];
-				$TradeHistory['return'][$key]['order_id'] = $key; //PHP Notice:
-			}
 		}
 		//Verify the ticker changed
 		if( !@$ticker || !@$return || !@$orderList || !@$TradeHistory || @$return['success'] !== 1 ){
@@ -474,13 +437,8 @@ while ( 'the answer to life the universe and everything' != '41'){
 			sleep(5);
 		}
 	}
-	//Translate Gox data to btc-e Format
-	if (@$GOX){
-		$orderList['success'] = ( $orderList['result'] == "success" ? $orderList['success'] = 1 : $orderList['success'] = 0);
-		$orderList['return'] = array();
-		$orderList['return'] = $orderList['data'];
-		$orderList['data'] = NULL;
-	}
+	
+	
 			
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
@@ -488,9 +446,6 @@ while ( 'the answer to life the universe and everything' != '41'){
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
 	if ( $ticker['ticker']['last'] > 1 ){ //if the ticker is valid
-		if (@$GOX) {
-			if ( $return['data']['Trade_Fee'] > 0 ) $exchangeCommision = $return['data']['Trade_Fee']/100; //Gox Commision
-		}
 		$threshold = ceil( $ticker['ticker']['last']*( (1/(1-$exchangeCommision)/(1-$profitTrade/2)) -1) * 100) /100 ;
 		$microThreshold = ceil( $ticker['ticker']['last']*( (1/(1-$exchangeCommision)/(1-$microProfit/2)) -1) * 100) /100 ;
 		if (!@$microTicker || @$microTicker < 1 ) {
@@ -515,15 +470,6 @@ while ( 'the answer to life the universe and everything' != '41'){
 	$b = $s = 0; //FIXED order clearing if no open orders
 	if ( $orderList['success'] > 0 ){
 		foreach ( $orderList['return'] as $key => $value){
-			if (@$GOX){	
-				$tmp1 = $value['amount']['value'];
-				$value['amount'] = NULL;
-				$value['amount'] = $tmp1;
-				
-				$value['rate'] = $value['price']['value'];
-				$tmp1 = NULL; $tmp1 = $value['amount'] * $value['rate'];
-				$tmp1 = NULL;
-			}
 			if ( $value['type'] == $exchangeBuySell[1] ){
 				$BTCO = $BTCO + $value['amount']; //BTC = sum of sell orders and amounts //PHP Fatal error:  Unsupported operand types in /arbot/buydownbotBTCG.php on line 281
 				$sellOrders[$s] = $value['rate'];
@@ -562,15 +508,11 @@ while ( 'the answer to life the universe and everything' != '41'){
 ////////////////////////////////////////////////////////////////////
 	$USDB = $BTCB = $USDT = $BTCT = $BTC = $USD = 0;
 	//Calculate the TOTAL we have in orders and balance and USD/last BTCTotal
-	if ($GOX) $BTCT = $return['return']['funds']['btc'] + $return['return']['funds']['usd']/$ticker['ticker']['last'];
 	if ($BTCE) $BTCT = $return['return']['funds']['btc'] + $BTCO + $return['return']['funds']['usd']/$ticker['ticker']['last'] + $USDO/$ticker['ticker']['last'];
 	//Calculate the TOTAL USD we have in buy orders, sell orders, BTC balance, USD Balance
-	if ($GOX) $USDT = ($return['return']['funds']['btc'])*$ticker['ticker']['last'] + $return['return']['funds']['usd'];
 	if ($BTCE) $USDT = ($return['return']['funds']['btc'] + $BTCO)*$ticker['ticker']['last'] + $USDO + $return['return']['funds']['usd'];
 	//Calculate the BALANCE we have in orders and funds BTCBalance USDBalance
-	if ($GOX) $BTCB = $return['return']['funds']['btc'];
 	if ($BTCE) $BTCB = $return['return']['funds']['btc'] + $BTCO;
-	if ($GOX) $USDB = $return['return']['funds']['usd'];
 	if ($BTCE) $USDB = $return['return']['funds']['usd'] + $USDO;
 	//Calculate the TRADE amount we have in funds and orders BTCTrade USDTrade
 	$BTC = ( $BTCB >= $maxBTC ? $maxBTC - $BTCO  : $BTCB - $BTCO );
@@ -589,7 +531,6 @@ while ( 'the answer to life the universe and everything' != '41'){
 
 		$BTCremaining = $BTCB;
 		if ($BALANCE) $BTCremaining = $BTC*($currentBalanceBTC-$reBalanceBTC);
-		
 		foreach ( $TradeHistory['return'] as $key => $value){
 		//DEBUG use this information to calculate trades/costs/profits
 			if ( $value['type'] == $exchangeBuySell[0] && $BTCremaining >= $minBidBTC  ) { 
@@ -613,7 +554,6 @@ while ( 'the answer to life the universe and everything' != '41'){
 		}
 	}
 }*/
-//DEBUG gox compatibility
 			if ( @$ordersPlaced && array_key_exists ( $value['order_id'] , $ordersPlaced )){ //PHP Notice:  Undefined index: order_id in /arbot/buydownbotBTCG.php on line 532
 				$filledOrders[$value['order_id']] = array(); //Define the array 
 				$filledOrders[$value['order_id']] = $ordersPlaced[$value['order_id']]; //Store the order info in the array
@@ -1409,8 +1349,6 @@ while ( 'the answer to life the universe and everything' != '41'){
 		while ( $countTrades <= $countOrder ){
 			if ( !empty($type[$countTrades]) ){
 				if (@$BTCE) $trade = json_decode(btce_query("Trade", array("pair" => "btc_usd", "type" => $type[$countTrades], "amount" => $amount[$countTrades], "rate" => $rate[$countTrades])), TRUE);
-				if (@$GOX) $trade = json_decode(mtgox_query("BTCUSD/money/order/add", array('type' => $type[$countTrades], 'amount' => $amount[$countTrades], 'price' => $rate[$countTrades])), TRUE);
-				if (@$GOX) ( $trade['result'] == "success" ? $trade['success'] = 1 : $trade['success'] = 0); 
 				if ( $trade['success'] !== 1 ) {
 					print "Failed: {$type[$countTrades]} {$amount[$countTrades]}BTC at \${$rate[$countTrades]}\n";
 					//print "\n Result:";
@@ -1426,7 +1364,6 @@ while ( 'the answer to life the universe and everything' != '41'){
 					//print "\n Result:";
 					//print_r($trade);
 					print "Ordered: {$type[$countTrades]} {$amount[$countTrades]}BTC at \${$rate[$countTrades]}\n";
-					if (@$GOX) $trade['return']['order_id'] = $trade['data']; 
 					$ordersPlaced[$trade['return']['order_id']] = array(
 					"type" => $type[$countTrades],
 					"amount" => $amount[$countTrades],
@@ -1436,8 +1373,7 @@ while ( 'the answer to life the universe and everything' != '41'){
 				}
 				// The message
 				$message = $message . "Type:{$type[$countTrades]} Amount:{$amount[$countTrades]}BTC at Rate:{$rate[$countTrades]}\n";
-				if (@$GOX) sleep(rand(1,10));
-			}
+				}
 			$countTrades++;
 		}
 		$message = $message . "\n BTC Balance:{$BTCB} USD Bal:{$USDB}\n";
@@ -1499,39 +1435,9 @@ while ( 'the answer to life the universe and everything' != '41'){
 		
 		return curl_exec($ch);
 	}
-	function mtgox_query($path, array $req = array()) {
-		$key = ''; //Your API Key
-		$secret = ''; //Your API Secret
-		$req['nonce'] = $GLOBALS['nonce']++; //Incriment the Global Nonce (Allows for multiple polls per second)
-		$post_data = http_build_query($req, '', '&'); // generate the POST data string
-	 
-		$prefix = $path."\0";
-		
-		// generate the extra headers
-		$headers = array(
-			'Rest-Key: '.$key,
-			'Rest-Sign: '.base64_encode(hash_hmac('sha512', $prefix.$post_data, base64_decode($secret), true)),
-		);
-	 
-		//Everyone sets this to null and then uses if==null <- It always LOLZ
-		$ch = null;
-		$ch = curl_init();
-		//curl_setopt($ch, CURLOPT_HEADER, FALSE);
-		curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
-		curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/4.0 (compatible; GOXBOT; '.php_uname('s').'; PHP/'.phpversion().')');
-		curl_setopt($ch, CURLOPT_URL, 'https://data.mtgox.com/api/2/'.$path);
-		curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data);
-		curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
-	 
-		writeInc($GLOBALS['nonce']);
-			
-		return curl_exec($ch);
-	}
 	function writeInc( $value = NULL )
 	{
 		if (@$GLOBALS['BTCE']) $fp = fopen('nonce','w');
-		if (@$GLOBALS['GOX']) $fp = fopen('nonceg','w');
 		fwrite($fp, $value);
 		fclose($fp);
 		
@@ -1542,7 +1448,6 @@ while ( 'the answer to life the universe and everything' != '41'){
 	function readInc()
 	{
 		if (@$GLOBALS['BTCE']) $fp = fopen('nonce','r');
-		if (@$GLOBALS['GOX']) $fp = fopen('nonceg','r');
 		$value = (int)fread($fp, 8);
 		fclose($fp);
 		
@@ -1551,7 +1456,6 @@ while ( 'the answer to life the universe and everything' != '41'){
 	
 	function cancelOrders( $type = NULL ) //modified to only cancel buy orders.
 	{
-		global $GOX;
 		global $BTCE;
 		global $exchangeBuySell;
 		global $sleepCancel;
@@ -1562,30 +1466,16 @@ while ( 'the answer to life the universe and everything' != '41'){
 		global $ordersPlaced;
 		
 		if (@$GLOBALS['BTCE']) $return = json_decode(btce_query("OrderList"), TRUE);
-		if (@$GOX){
-			$return = json_decode(mtgox_query('BTCUSD/money/orders'), TRUE);
-			( $return['result'] == "success" ? $return['success'] = 1 : $return['success'] = 0);
-			$return['return'] = $return['data'];
-
-		}
+		
 		if($return['success'] > 0){
 			$countCancel=0;
 			$tmp2 = 0; print "Canceling Orders\n";
 			foreach ($return['return'] as $key => $value){
 				$order_id = $key;
-				if (@$GOX){
-					$tmp1 = $value['amount']['value'];
-					$value['amount'] = NULL;
-					$value['amount'] = $tmp1;
-					$value['rate'] = $value['price']['value'];
-					$order_id = $value['oid'];
-				}
 				if ( $value['type'] == $type && (@$value['pair'] == "btc_usd" || @$value['item'] == "BTC") ){ //$value['amount'] != $engineAmount &&
 					if (!$simulate && $countCancel >= $maxPendingOrders ) {
 						if ( $tmp2 == 50 ) {print "\nCanceling";$tmp2=0;} else {print ".";$tmp2++;};
 						if (@$BTCE) $trade = json_decode(btce_query("CancelOrder", array("order_id" => $order_id)), TRUE);
-						if (@$GOX) $trade = json_decode(mtgox_query("BTCUSD/money/order/cancel", array("oid" => $order_id)), TRUE);
-						if (@$GOX) ( $trade['result'] == "success" ? $trade['success'] = 1 : $trade['success'] = 0);
 					}
 					if ($trade['success'] == 1){
 						$countCancel++;
@@ -1599,7 +1489,6 @@ while ( 'the answer to life the universe and everything' != '41'){
 		}
 		while ( empty($return) ){
 			if (@$GLOBALS['BTCE']) $GLOBALS['return'] = json_decode(btce_query('getInfo'), TRUE);
-			if (@$GLOBALS['GOX'])  $GLOBALS['return'] = json_decode(mtgox_query('BTCUSD/money/info'), TRUE);
 			time_nanosleep(0,$sleepCancel);
 		}
 	}
