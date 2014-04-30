@@ -1,4 +1,5 @@
 bitcoin-rolling-bot-php
 =======================
+Support Thread: https://bitcointalk.org/index.php?topic=366546.0
 
-A Gox + BTC-e Multi Engine rolling bot with stop loss
+BTC-e Multi Engine rolling bot with stop loss
